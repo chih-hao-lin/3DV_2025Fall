@@ -51,7 +51,8 @@ def forward_bg(self: SuperChargedR4DV,
     rgbw = torch.stack([v[0] for v in rgbw])
     cent = torch.stack([self.cents[l] for l in index])  # B, S, 3
 
-    if self.skip_shs:
+    is_relight_mode = rgbw.shape[-1] > 4
+    if self.skip_shs or is_relight_mode:
         sh[:] = 0
     if self.skip_base:
         sh = sh.abs()
@@ -59,11 +60,53 @@ def forward_bg(self: SuperChargedR4DV,
 
     rgb = self.get_rgb(batch.R.half(), batch.T.half(), xyz, sh, rgbw, cent, self.n_srcs, self.n_shs, self.ibr_resd_limit)
 
+    if is_relight_mode:
+        basecolor = self.parse_rgb(xyz, rgb, batch, 'basecolor')
+        normal = self.parse_rgb(xyz, rgb, batch, 'normal')
+        metallic = self.parse_rgb(xyz, rgb, batch, 'metallic')
+        roughness = self.parse_rgb(xyz, rgb, batch, 'roughness')
+        relight_0 = self.parse_rgb(xyz, rgb, batch, 'relight_0')
+        relight_1 = self.parse_rgb(xyz, rgb, batch, 'relight_1')
+        relight_2 = self.parse_rgb(xyz, rgb, batch, 'relight_2')
+        relight_3 = self.parse_rgb(xyz, rgb, batch, 'relight_3')
+        relight_4 = self.parse_rgb(xyz, rgb, batch, 'relight_4')
+        rgb = relight_0
+    else:
+        rgb = self.parse_rgb(xyz, rgb, batch, 'rgb')
+        basecolor = None
+        normal = None
+        metallic = None
+        roughness = None
+        relight_0 = None
+        relight_1 = None
+        relight_2 = None
+        relight_3 = None
+        relight_4 = None
+
     if return_frags:
-        return None, xyz, rgb, rad, occ
+        return None, xyz, rgb, rad, occ, basecolor, normal, metallic, roughness, relight_0, relight_1, relight_2, relight_3, relight_4
 
     rgb, acc, dpt = self.render_points(xyz, rgb, rad, occ, batch)  # almost always use render_cudagl
-    self.store_output(None, xyz, rgb, acc, dpt, batch)
+    if basecolor is not None:
+        basecolor, _, _ = self.render_points(xyz, basecolor, rad, occ, batch)
+    if normal is not None:
+        normal, _, _ = self.render_points(xyz, normal, rad, occ, batch)
+    if metallic is not None:
+        metallic, _, _ = self.render_points(xyz, metallic, rad, occ, batch)
+    if roughness is not None:
+        roughness, _, _ = self.render_points(xyz, roughness, rad, occ, batch)
+    if relight_0 is not None:
+        relight_0, _, _ = self.render_points(xyz, relight_0, rad, occ, batch)
+    if relight_1 is not None:
+        relight_1, _, _ = self.render_points(xyz, relight_1, rad, occ, batch)
+    if relight_2 is not None:
+        relight_2, _, _ = self.render_points(xyz, relight_2, rad, occ, batch)
+    if relight_3 is not None:
+        relight_3, _, _ = self.render_points(xyz, relight_3, rad, occ, batch)
+    if relight_4 is not None:
+        relight_4, _, _ = self.render_points(xyz, relight_4, rad, occ, batch)
+
+    self.store_output(None, xyz, rgb, acc, dpt, batch, basecolor, normal, metallic, roughness, relight_0, relight_1, relight_2, relight_3, relight_4)
     return None
 
 
@@ -241,24 +284,76 @@ class SuperChargedR4DVB(VolumetricVideoModule):
         # Precrop image to bytes
         store.Ks, store.Hs, store.Ws = dataset.Ks.clone(), dataset.Hs.clone(), dataset.Ws.clone()  # avoid inplace modification
         store.ims_bytes, store.mks_bytes = dataset.ims_bytes.clone(), dataset.mks_bytes.clone()
+        if dataset.bcs_bytes is not None:
+            store.bcs_bytes = dataset.bcs_bytes.clone()
+        if dataset.sns_bytes is not None:
+            store.sns_bytes = dataset.sns_bytes.clone()
+        if dataset.mts_bytes is not None:
+            store.mts_bytes = dataset.mts_bytes.clone()
+        if dataset.rgs_bytes is not None:
+            store.rgs_bytes = dataset.rgs_bytes.clone()
         store.src_ixts, store.src_exts = dataset.src_ixts.clone(), dataset.src_exts.clone()
 
         ims_bytes = []
         mks_bytes = []
+        if dataset.bcs_bytes is not None:
+            bcs_bytes = []
+        else:
+            bcs_bytes = None
+        if dataset.sns_bytes is not None:
+            sns_bytes = []
+        else:
+            sns_bytes = None
+        if dataset.mts_bytes is not None:
+            mts_bytes = []
+        else:
+            mts_bytes = None
+        if dataset.rgs_bytes is not None:
+            rgs_bytes = []
+        else:
+            rgs_bytes = None
         for i in range(dataset.n_views):
             for j in range(dataset.n_latents):
                 ims_bytes.append(dataset.ims_bytes[i * dataset.n_latents + j])
                 mks_bytes.append(dataset.mks_bytes[i * dataset.n_latents + j])
+                if bcs_bytes is not None:
+                    bcs_bytes.append(dataset.bcs_bytes[i * dataset.n_latents + j])
+                if sns_bytes is not None:
+                    sns_bytes.append(dataset.sns_bytes[i * dataset.n_latents + j])
+                if mts_bytes is not None:
+                    mts_bytes.append(dataset.mts_bytes[i * dataset.n_latents + j])
+                if rgs_bytes is not None:
+                    rgs_bytes.append(dataset.rgs_bytes[i * dataset.n_latents + j])
 
         bounds = [dataset.get_bounds(i) for i in range(dataset.n_latents)]  # N, 2, 3
         bounds = torch.stack(bounds)[None].repeat(dataset.n_views, 1, 1, 1)  # V, N, 2, 3
         dataset.ims_bytes, dataset.mks_bytes, dataset.Ks, dataset.Hs, dataset.Ws, _, _ = \
             decode_crop_fill_ims_bytes(ims_bytes, mks_bytes, dataset.src_ixts.numpy(), dataset.src_exts[..., :3, :3].numpy(), dataset.src_exts[..., :3, 3:].numpy(), bounds.numpy(), f'Cropping msks imgs for {blue(dataset.data_root)}, split {magenta(dataset.split.name)}')
+        if dataset.bcs_bytes is not None:
+            dataset.bcs_bytes, _, _, _, _, _, _ = \
+                decode_crop_fill_ims_bytes(bcs_bytes, mks_bytes, dataset.src_ixts.numpy(), dataset.src_exts[..., :3, :3].numpy(), dataset.src_exts[..., :3, 3:].numpy(), bounds.numpy(), f'Cropping bcs imgs for {blue(dataset.data_root)}, split {magenta(dataset.split.name)}')
+        if dataset.sns_bytes is not None:
+            dataset.sns_bytes, _, _, _, _, _, _ = \
+                decode_crop_fill_ims_bytes(sns_bytes, mks_bytes, dataset.src_ixts.numpy(), dataset.src_exts[..., :3, :3].numpy(), dataset.src_exts[..., :3, 3:].numpy(), bounds.numpy(), f'Cropping sns imgs for {blue(dataset.data_root)}, split {magenta(dataset.split.name)}')
+        if dataset.mts_bytes is not None:
+            dataset.mts_bytes, _, _, _, _, _, _ = \
+                decode_crop_fill_ims_bytes(mts_bytes, mks_bytes, dataset.src_ixts.numpy(), dataset.src_exts[..., :3, :3].numpy(), dataset.src_exts[..., :3, 3:].numpy(), bounds.numpy(), f'Cropping mts imgs for {blue(dataset.data_root)}, split {magenta(dataset.split.name)}')
+        if dataset.rgs_bytes is not None:
+            dataset.rgs_bytes, _, _, _, _, _, _ = \
+                decode_crop_fill_ims_bytes(rgs_bytes, mks_bytes, dataset.src_ixts.numpy(), dataset.src_exts[..., :3, :3].numpy(), dataset.src_exts[..., :3, 3:].numpy(), bounds.numpy(), f'Cropping rgs imgs for {blue(dataset.data_root)}, split {magenta(dataset.split.name)}')
         dataset.Ks = torch.as_tensor(dataset.Ks)
         dataset.Hs = torch.as_tensor(dataset.Hs)
         dataset.Ws = torch.as_tensor(dataset.Ws)
         dataset.ims_bytes = UnstructuredTensors(dataset.ims_bytes)
         dataset.mks_bytes = UnstructuredTensors(dataset.mks_bytes)
+        if dataset.bcs_bytes is not None:
+            dataset.bcs_bytes = UnstructuredTensors(dataset.bcs_bytes)
+        if dataset.sns_bytes is not None:
+            dataset.sns_bytes = UnstructuredTensors(dataset.sns_bytes)
+        if dataset.mts_bytes is not None:
+            dataset.mts_bytes = UnstructuredTensors(dataset.mts_bytes)
+        if dataset.rgs_bytes is not None:
+            dataset.rgs_bytes = UnstructuredTensors(dataset.rgs_bytes)
         dataset.load_source_params()  # only update src_ixts
         dataset.src_exts = store.src_exts
 
@@ -266,12 +361,28 @@ class SuperChargedR4DVB(VolumetricVideoModule):
         self.fg_sampler._load_state_dict_post_hook(module, incompatible_keys)  # MARK: where the real work is done
         dataset.Ks, dataset.Hs, dataset.Ws = store.Ks, store.Hs, store.Ws
         dataset.ims_bytes, dataset.mks_bytes = store.ims_bytes, store.mks_bytes
+        if dataset.bcs_bytes is not None:
+            dataset.bcs_bytes = store.bcs_bytes
+        if dataset.sns_bytes is not None:
+            dataset.sns_bytes = store.sns_bytes
+        if dataset.mts_bytes is not None:
+            dataset.mts_bytes = store.mts_bytes
+        if dataset.rgs_bytes is not None:
+            dataset.rgs_bytes = store.rgs_bytes
         dataset.load_source_params()
 
         # Always perform the clean up
         if self.should_release_memory:
             dataset.ims_bytes = None
             dataset.mks_bytes = None
+            if dataset.bcs_bytes is not None:
+                dataset.bcs_bytes = None
+            if dataset.sns_bytes is not None:
+                dataset.sns_bytes = None
+            if dataset.mts_bytes is not None:
+                dataset.mts_bytes = None
+            if dataset.rgs_bytes is not None:
+                dataset.rgs_bytes = None
             self.bg_sampler.release_memory()
             self.fg_sampler.release_memory()
 
@@ -302,15 +413,68 @@ class SuperChargedR4DVB(VolumetricVideoModule):
         self.bg_sampler.construct_from_runner(bg_runner)  # this should be pretty smooth
 
     def forward(self, batch: dotdict):
-        _, fg_xyz, fg_rgb, fg_rad, fg_occ = self.fg_sampler.forward(batch=batch, return_frags=True)
-        _, bg_xyz, bg_rgb, bg_rad, bg_occ = self.bg_sampler.forward(batch=batch, return_frags=True)
+        _, fg_xyz, fg_rgb, fg_rad, fg_occ, fg_basecolor, fg_normal, fg_metallic, fg_roughness, fg_relight_0, fg_relight_1, fg_relight_2, fg_relight_3, fg_relight_4 = self.fg_sampler.forward(batch=batch, return_frags=True)
+        _, bg_xyz, bg_rgb, bg_rad, bg_occ, bg_basecolor, bg_normal, bg_metallic, bg_roughness, bg_relight_0, bg_relight_1, bg_relight_2, bg_relight_3, bg_relight_4 = self.bg_sampler.forward(batch=batch, return_frags=True)
 
-        xyz, rgb, rad, occ = [
-            torch.cat([fg_xyz, bg_xyz], dim=-2),
-            torch.cat([fg_rgb, bg_rgb], dim=-2),
-            torch.cat([fg_rad, bg_rad], dim=-2),
-            torch.cat([fg_occ, bg_occ], dim=-2)]
+        xyz = torch.cat([fg_xyz, bg_xyz], dim=-2)
+        rgb = torch.cat([fg_rgb, bg_rgb], dim=-2)
+        rad = torch.cat([fg_rad, bg_rad], dim=-2)
+        occ = torch.cat([fg_occ, bg_occ], dim=-2)
+        if fg_basecolor is not None and bg_basecolor is not None:
+            basecolor = torch.cat([fg_basecolor, bg_basecolor], dim=-2)
+        else:
+            basecolor = None
+        if fg_normal is not None and bg_normal is not None:
+            normal = torch.cat([fg_normal, bg_normal], dim=-2)
+        else:
+            normal = None
+        if fg_metallic is not None and bg_metallic is not None:
+            metallic = torch.cat([fg_metallic, bg_metallic], dim=-2)
+        else:
+            metallic = None
+        if fg_roughness is not None and bg_roughness is not None:
+            roughness = torch.cat([fg_roughness, bg_roughness], dim=-2)
+        else:
+            roughness = None
+        if fg_relight_0 is not None and bg_relight_0 is not None:
+            relight_0 = torch.cat([fg_relight_0, bg_relight_0], dim=-2)
+        else:
+            relight_0 = None
+        if fg_relight_1 is not None and bg_relight_1 is not None:
+            relight_1 = torch.cat([fg_relight_1, bg_relight_1], dim=-2)
+        else:
+            relight_1 = None
+        if fg_relight_2 is not None and bg_relight_2 is not None:
+            relight_2 = torch.cat([fg_relight_2, bg_relight_2], dim=-2)
+        else:
+            relight_2 = None
+        if fg_relight_3 is not None and bg_relight_3 is not None:
+            relight_3 = torch.cat([fg_relight_3, bg_relight_3], dim=-2)
+        else:
+            relight_3 = None
+        if fg_relight_4 is not None and bg_relight_4 is not None:
+            relight_4 = torch.cat([fg_relight_4, bg_relight_4], dim=-2)
+        else:
+            relight_4 = None
 
         # Perform points rendering
         rgb, acc, dpt = self.bg_sampler.render_points(xyz, rgb, rad, occ, batch)  # B, HW, C
-        self.bg_sampler.store_output(None, xyz, rgb, acc, dpt, batch)
+        if basecolor is not None:
+            basecolor, _, _ = self.bg_sampler.render_points(xyz, basecolor, rad, occ, batch)
+        if normal is not None:
+            normal, _, _ = self.bg_sampler.render_points(xyz, normal, rad, occ, batch)
+        if metallic is not None:
+            metallic, _, _ = self.bg_sampler.render_points(xyz, metallic, rad, occ, batch)
+        if roughness is not None:
+            roughness, _, _ = self.bg_sampler.render_points(xyz, roughness, rad, occ, batch)
+        if relight_0 is not None:
+            relight_0, _, _ = self.bg_sampler.render_points(xyz, relight_0, rad, occ, batch)
+        if relight_1 is not None:
+            relight_1, _, _ = self.bg_sampler.render_points(xyz, relight_1, rad, occ, batch)
+        if relight_2 is not None:
+            relight_2, _, _ = self.bg_sampler.render_points(xyz, relight_2, rad, occ, batch)
+        if relight_3 is not None:
+            relight_3, _, _ = self.bg_sampler.render_points(xyz, relight_3, rad, occ, batch)
+        if relight_4 is not None:
+            relight_4, _, _ = self.bg_sampler.render_points(xyz, relight_4, rad, occ, batch)
+        self.bg_sampler.store_output(None, xyz, rgb, acc, dpt, batch, basecolor, normal, metallic, roughness, relight_0, relight_1, relight_2, relight_3, relight_4)

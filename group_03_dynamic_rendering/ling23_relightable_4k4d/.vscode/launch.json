@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        },
+        {
+            "name": "prepare_input.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/diffusionrenderer/prepare_input.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--data_root", "data/mobile_stage/dance3",
+                "--output_root", "../cosmos1-diffusion-renderer/asset/4k4d_inputs/dance3"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "prepare_output.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/diffusionrenderer/prepare_output.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--data_root", "data/mobile_stage/dance3",
+                "--output_root", "../cosmos1-diffusion-renderer/asset/4k4d_outputs/dance3"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "test_single_frame",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/data/lingjingwang/miniconda3/envs/4k4d/bin/evc-test",
+            "console": "integratedTerminal",
+            "args": [
+                "-c", "configs/projects/realtime4dv/rendering/4k4d_dance3.yaml,configs/specs/video.yaml,configs/specs/eval.yaml,configs/specs/vf0.yaml",
+            ],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

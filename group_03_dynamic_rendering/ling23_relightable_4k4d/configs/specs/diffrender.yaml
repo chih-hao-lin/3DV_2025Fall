@@ -1,0 +1,15 @@
+
+# This config will let 4K4D use video extracted images and masks, and remove the need for preloading visual hulls
+val_dataloader_cfg:
+    dataset_cfg:
+      use_basecolor: true
+      use_shading_normal: true
+      use_metallic: true
+      use_roughness: true
+print_test_progress: true
+model_cfg:
+  sampler_cfg:
+    render_gs: false
+runner_cfg:
+    visualizer_cfg:
+        types: ['BASECOLOR', 'SHADING_NORMAL', 'METALLIC', 'ROUGHNESS', 'RELIGHT_0', 'RELIGHT_1', 'RELIGHT_2', 'RELIGHT_3', 'RELIGHT_4']

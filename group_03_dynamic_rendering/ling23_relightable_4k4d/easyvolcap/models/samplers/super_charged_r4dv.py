@@ -1,16 +1,20 @@
 # This is a inference sampler for the turbo-charged point-planes model.
 from __future__ import annotations
 from typing import TYPE_CHECKING, List, Dict, Tuple
+
+from easyvolcap.models.samplers.split_sum.util import rgb_to_srgb, srgb_to_rgb
 if TYPE_CHECKING:
     from easyvolcap.runners.volumetric_video_viewer import VolumetricVideoViewer
     from easyvolcap.runners.volumetric_video_runner import VolumetricVideoRunner
     from easyvolcap.dataloaders.datasets.image_based_dataset import ImageBasedDataset
 
+import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
 from types import MethodType
+from pathlib import Path
 
 from easyvolcap.engine import cfg
 from easyvolcap.engine import SAMPLERS, EMBEDDERS, REGRESSORS
@@ -30,6 +34,8 @@ from easyvolcap.utils.net_utils import unfreeze_module, freeze_module, typed, ma
 
 from easyvolcap.models.samplers.gaussiant_sampler import GaussianTSampler
 from easyvolcap.models.samplers.r4dv_sampler import R4DVSampler
+from easyvolcap.models.samplers.split_sum import light
+from easyvolcap.utils.math_utils import normalize
 
 
 # This function will cache all point features by directly querying the xyz_embedder
@@ -124,18 +130,39 @@ def average_single_frame(i: int,
     timer.record('load cameras')
 
     # Load source images from the dataset
-    if dataset.closest_using_t: src_inps = list(zip(*parallel_execution([i] * kwargs.n_srcs, src_inds, action=dataset.get_image)))[0]  # S: H, W, 3 # MARK: SYNC
-    else: src_inps = list(zip(*parallel_execution(src_inds, [i] * kwargs.n_srcs, action=dataset.get_image)))[0]  # S: H, W, 3 # MARK: SYNC
+    if dataset.closest_using_t: 
+        rgb, msk, wet, dpt, bkg, norm, basecolor, shading_normal, metallic, roughness = list(zip(*parallel_execution([i] * kwargs.n_srcs, src_inds, action=dataset.get_image)))  # S: H, W, 3 # MARK: SYNC
+    else: 
+        rgb, msk, wet, dpt, bkg, norm, basecolor, shading_normal, metallic, roughness = list(zip(*parallel_execution(src_inds, [i] * kwargs.n_srcs, action=dataset.get_image)))  # S: H, W, 3 # MARK: SYNC
+    src_inps = rgb
+    extra_inps = []
+    if basecolor[0] is not None:
+        extra_inps.append(basecolor)
+    if shading_normal[0] is not None:
+        extra_inps.append(shading_normal)
+    if metallic[0] is not None:
+        extra_inps.append([x.mean(dim=-1, keepdim=True) for x in metallic])
+    if roughness[0] is not None:
+        extra_inps.append([x.mean(dim=-1, keepdim=True) for x in roughness])
+    if len(extra_inps) > 0:
+        extra_inps = [torch.cat([x[i] for x in extra_inps], dim=-1) for i in range(len(rgb))]
+    else:
+        extra_inps = None
 
     # Move the source images to GPU and concatenate them (with black scaling)
     src_inps = [inp[None].permute(0, 3, 1, 2).to(xyz) for inp in src_inps]  # S: B, 3, H, W  # move to the same device
     src_inps = compute_src_inps(dotdict(src_inps=src_inps))  # B, S, 3, H, W, there exists some cropping and filling with black here
+    if extra_inps is not None:
+        extra_inps = [inp[None].permute(0, 3, 1, 2).to(xyz) for inp in extra_inps]  # S: B, 3, H, W  # move to the same device
+        extra_inps = compute_src_inps(dotdict(src_inps=extra_inps))  # B, S, 3, H, W, there exists some cropping and filling with black here
 
     # Compute rendering size
     img_pad = sampler.ibr_embedder.feat_reg.size_pad
     Hc, Wc = src_inps.shape[-2:]  # padded and cropped image size
     Hp, Wp = int(np.ceil(Hc / img_pad)) * img_pad, int(np.ceil(Wc / img_pad)) * img_pad  # Input and output should be same in size
     src_inps = pad_image(src_inps, size=(Hp, Wp))  # B, S, 3, H, W
+    if extra_inps is not None:
+        extra_inps = pad_image(extra_inps, size=(Hp, Wp))  # B, S, 3, H, W
     timer.record('load source images')
 
     # Pass through the IBR networks for blending weights
@@ -158,6 +185,14 @@ def average_single_frame(i: int,
         src_ixts[:, i:i + 1],
         src_inps.new_ones(2, 1),
     ) for i in range(src_feat_inps.shape[1])], dim=1)  # B, S, N, 3
+    if extra_inps is not None:
+        extra_inps = torch.cat([sample_geometry_feature_image(
+            xyz,
+            extra_inps[:, i:i + 1],
+            src_exts[:, i:i + 1],
+            src_ixts[:, i:i + 1],
+            src_inps.new_ones(2, 1),
+        ) for i in range(extra_inps.shape[1])], dim=1)  # B, S, N, 3
     ibrs, rgbs = ibrs_rgbs[..., :-3], ibrs_rgbs[..., -3:]
     del src_feat, src_inps, src_feat_inps, ibrs_rgbs
     timer.record('sample image features')
@@ -171,7 +206,11 @@ def average_single_frame(i: int,
     timer.record('compute blending weights')
 
     # Reshape for returning
-    return torch.cat([rgbs, bws], dim=-1), affine_inverse(src_exts)[..., :3, 3]  # B, S, N, 4 & B, S, 3
+    if extra_inps is not None:
+        tmp = [extra_inps, bws]
+    else:
+        tmp = [rgbs, bws]
+    return torch.cat(tmp, dim=-1), affine_inverse(src_exts)[..., :3, 3]  # B, S, N, 4 & B, S, 3
 
 
 @SAMPLERS.register_module()
@@ -184,6 +223,11 @@ class SuperChargedR4DV(R4DVSampler):
                  # Visualization
                  skip_shs: bool = False,
                  skip_base: bool = False,
+                 envmap_path0: Path = Path('assets/irrmaps/aerodynamics_workshop_2k.hdr'),
+                 envmap_path1: Path = Path('assets/irrmaps/blaubeuren_night_1k.hdr'),
+                 envmap_path2: Path = Path('assets/irrmaps/industrial_workshop_foundry_1k.hdr'),
+                 envmap_path3: Path = Path('assets/irrmaps/je_gray_park_1k.hdr'),
+                 envmap_path4: Path = Path('assets/irrmaps/thatch_chapel_1k.hdr'),
                  #  render_gs: bool = False,
 
                  *args,
@@ -197,6 +241,8 @@ class SuperChargedR4DV(R4DVSampler):
 
         self.skip_shs = skip_shs
         self.skip_base = skip_base
+        self.envmap_paths = [envmap_path0, envmap_path1, envmap_path2, envmap_path3, envmap_path4]
+        self.env_light = [light.load_env(path) for path in self.envmap_paths]
 
     def render_imgui(self, viewer: 'VolumetricVideoViewer', batch: dotdict):
         super().render_imgui(viewer, batch)
@@ -356,6 +402,7 @@ class SuperChargedR4DV(R4DVSampler):
             rgbw, cent = l_average_single_frame(i)
             rgbw = rgbw.to(self.dtype).view(self.memory_dtype).detach().cpu(memory_format=torch.contiguous_format)  # MARK: SYNC
             torch.cuda.empty_cache()  # only out-of-frame cache cleaning works
+            gc.collect()
             rgbw = register_memory(rgbw)
             self.rgbws[(b + i * s) // ts - tb] = make_buffer(rgbw[0])
             self.cents[(b + i * s) // ts - tb] = make_buffer(cent[0])
@@ -486,8 +533,34 @@ class SuperChargedR4DV(R4DVSampler):
         base = (rgbw[..., -1:].softmax(-3) * rgbw[..., :-1]).sum(-3)
 
         # Residual speculars
-        rgb = base + eval_sh(sh_deg, sh, dir).tanh() * resd_limit  # NOTE: this is the only thing that need to be run on CUDA (or torch)
+        rgb = torch.cat([base[..., :3] + eval_sh(sh_deg, sh, dir).tanh() * resd_limit, base[..., 3:]], dim=-1)  # NOTE: this is the only thing that need to be run on CUDA (or torch)
         rgb = rgb.clip(0, 1)
+        return rgb
+
+    def parse_rgb(self, xyz, rgb, batch, render_mode):
+        match render_mode:
+            case 'rgb':
+                rgb = rgb[..., :3]
+            case 'basecolor':
+                rgb = rgb[..., :3]
+            case 'normal':
+                rgb = rgb[..., 3:6]
+            case 'metallic':
+                rgb = rgb[..., 6:7].repeat_interleave(3, dim=-1)
+            case 'roughness':
+                rgb = rgb[..., 7:8].repeat_interleave(3, dim=-1)
+            case 'relight_0':
+                rgb = self.shade(xyz, rgb, batch, 0)
+            case 'relight_1':
+                rgb = self.shade(xyz, rgb, batch, 1)
+            case 'relight_2':
+                rgb = self.shade(xyz, rgb, batch, 2)
+            case 'relight_3':
+                rgb = self.shade(xyz, rgb, batch, 3)
+            case 'relight_4':
+                rgb = self.shade(xyz, rgb, batch, 4)
+            case _:
+                raise ValueError(f'Unknown render mode {self.render_mode}')
         return rgb
 
     def forward(self, batch: dotdict, return_frags: bool = False):
@@ -504,7 +577,8 @@ class SuperChargedR4DV(R4DVSampler):
         values = self.fetch(index, [self.shs, self.rgbws])  # will initiate copy for both rgbw and sh, trying to overlap them
         sh = torch.stack([v[0] for v in values])
         rgbw = torch.stack([v[1] for v in values])  # B, S, N, 4
-        if self.skip_shs:
+        is_relight_mode = rgbw.shape[-1] > 4
+        if self.skip_shs or is_relight_mode:
             sh[:] = 0
         if self.skip_base:
             sh = sh.abs()
@@ -514,13 +588,72 @@ class SuperChargedR4DV(R4DVSampler):
         rgb = self.get_rgb(batch.R.half(), batch.T.half(), xyz, sh, rgbw, cent, self.n_srcs, self.n_shs, self.ibr_resd_limit)
         timer.record('evaluate SH')
 
+        if is_relight_mode:
+            basecolor = self.parse_rgb(xyz, rgb, batch, 'basecolor')
+            normal = self.parse_rgb(xyz, rgb, batch, 'normal')
+            metallic = self.parse_rgb(xyz, rgb, batch, 'metallic')
+            roughness = self.parse_rgb(xyz, rgb, batch, 'roughness')
+            relight_0 = self.parse_rgb(xyz, rgb, batch, 'relight_0')
+            relight_1 = self.parse_rgb(xyz, rgb, batch, 'relight_1')
+            relight_2 = self.parse_rgb(xyz, rgb, batch, 'relight_2')
+            relight_3 = self.parse_rgb(xyz, rgb, batch, 'relight_3')
+            relight_4 = self.parse_rgb(xyz, rgb, batch, 'relight_4')
+            rgb = relight_0
+        else:
+            rgb = self.parse_rgb(xyz, rgb, batch, 'rgb')
+            basecolor = None
+            normal = None
+            metallic = None
+            roughness = None
+            relight_0 = None
+            relight_1 = None
+            relight_2 = None
+            relight_3 = None
+            relight_4 = None
+        
         if return_frags:
-            return None, xyz, rgb, rad, occ
+            return None, xyz, rgb, rad, occ, basecolor, normal, metallic, roughness, relight_0, relight_1, relight_2, relight_3, relight_4
 
         # Perform points rendering (for now, this is dominating)
         rgb, acc, dpt = self.render_points(xyz, rgb, rad, occ, batch)  # almost always use render_cudagl
+        if basecolor is not None:
+            basecolor, _, _ = self.render_points(xyz, basecolor, rad, occ, batch)
+        if normal is not None:
+            normal, _, _ = self.render_points(xyz, normal, rad, occ, batch)
+        if metallic is not None:
+            metallic, _, _ = self.render_points(xyz, metallic, rad, occ, batch)
+        if roughness is not None:
+            roughness, _, _ = self.render_points(xyz, roughness, rad, occ, batch)
+        if relight_0 is not None:
+            relight_0, _, _ = self.render_points(xyz, relight_0, rad, occ, batch)
+        if relight_1 is not None:
+            relight_1, _, _ = self.render_points(xyz, relight_1, rad, occ, batch)
+        if relight_2 is not None:
+            relight_2, _, _ = self.render_points(xyz, relight_2, rad, occ, batch)
+        if relight_3 is not None:
+            relight_3, _, _ = self.render_points(xyz, relight_3, rad, occ, batch)
+        if relight_4 is not None:
+            relight_4, _, _ = self.render_points(xyz, relight_4, rad, occ, batch)
         timer.record('render points')
 
         # Prepare for output
-        self.store_output(None, xyz, rgb, acc, dpt, batch)
+        self.store_output(None, xyz, rgb, acc, dpt, batch, basecolor, normal, metallic, roughness, relight_0, relight_1, relight_2, relight_3, relight_4)
         return None
+
+    def shade(self, xyz, rgb, batch, env_idx):
+        basecolor = rgb[..., :3]
+        normal = normalize(rgb[..., 3:6] * 2 - 1)
+        metallic = rgb[..., 6:7]
+        roughness = rgb[..., 7:8]
+        occlusion = torch.zeros_like(metallic)
+        orm = torch.cat([occlusion, roughness, metallic], dim=-1)
+        C = (-batch.R.mT @ batch.T).mT
+        rgb = rgb_to_srgb(self.env_light[env_idx].shade(
+            xyz.float()[None, ...], 
+            normal.float()[None, ...], 
+            srgb_to_rgb(basecolor.float()[None, ...]), 
+            orm.float()[None, ...], 
+            C.float()[None, ...],
+        ))[0].half()
+        return rgb
+

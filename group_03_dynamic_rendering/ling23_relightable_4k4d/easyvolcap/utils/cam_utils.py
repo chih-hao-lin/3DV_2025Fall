@@ -364,7 +364,9 @@ def gen_linear_interp_func(lins: np.ndarray, smoothing_term=10.0):  # smoothing_
     return f
 
 
-def interpolate_camera_path(c2ws: np.ndarray, n_render_views=50, smoothing_term=10.0, **kwargs):
+def interpolate_camera_path(c2ws: np.ndarray, n_render_views=50, smoothing_term=10.0, camera_order=None, **kwargs):
+    if camera_order is not None:
+        c2ws = c2ws[camera_order]
     # Store interpolation parameters
     f = gen_cubic_spline_interp_func(c2ws, smoothing_term)
 

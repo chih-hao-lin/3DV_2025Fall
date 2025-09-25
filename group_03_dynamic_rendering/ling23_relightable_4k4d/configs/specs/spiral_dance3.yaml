@@ -1,0 +1,8 @@
+configs: configs/specs/orbit.yaml
+val_dataloader_cfg:
+    dataset_cfg:
+        interp_type: SPIRAL
+        interp_cfg:
+            smoothing_term: 5.0 # use this to actually activate the interpolation dataset
+            n_rots: 1
+            xyz_ratio: [0.6, 0.3, 0.25]

@@ -161,7 +161,33 @@ class VolumetricVideoVisualizer:  # this should act as a base class for other ty
             img = output.rgb_map
             if self.store_ground_truth and 'rgb' in batch:
                 img_gt = batch.rgb
-
+        
+        elif type == Visualization.BASECOLOR:
+            img = output.basecolor
+            if self.store_ground_truth and 'basecolor' in batch:
+                img_gt = batch.basecolor
+        elif type == Visualization.SHADING_NORMAL:
+            img = output.normal
+            if self.store_ground_truth and 'shading_normal' in batch:
+                img_gt = batch.shading_normal
+        elif type == Visualization.METALLIC:
+            img = output.metallic
+            if self.store_ground_truth and 'metallic' in batch:
+                img_gt = batch.metallic
+        elif type == Visualization.ROUGHNESS:
+            img = output.roughness
+            if self.store_ground_truth and 'roughness' in batch:
+                img_gt = batch.roughness
+        elif type == Visualization.RELIGHT_0:
+            img = output.relight_0
+        elif type == Visualization.RELIGHT_1:
+            img = output.relight_1
+        elif type == Visualization.RELIGHT_2:
+            img = output.relight_2
+        elif type == Visualization.RELIGHT_3:
+            img = output.relight_3
+        elif type == Visualization.RELIGHT_4:
+            img = output.relight_4
         elif type == Visualization.SRCINPS:
             # src_inps, only for per-command visualization
             img = batch.src_inps.permute(0, 1, 3, 4, 2)

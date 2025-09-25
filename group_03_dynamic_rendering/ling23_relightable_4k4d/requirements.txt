@@ -28,6 +28,7 @@ cuda-python; sys_platform!='darwin'
 scikit-image
 imgui-bundle
 opencv-python
+slangtorch
 
 # Stupid PyTorch CUDA extension building... Unable to ensure pytorch is installed before the building happens...
 # tinycudann @ git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch

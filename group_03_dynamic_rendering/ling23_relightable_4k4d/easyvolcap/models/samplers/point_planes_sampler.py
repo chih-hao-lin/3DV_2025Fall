@@ -615,7 +615,9 @@ class PointPlanesSampler(VolumetricVideoModule):
         pcd_t = time[..., None, None].expand(-1, *pcd.shape[1:-1], 1)  # B, N, 1
         return pcd, pcd_t
 
-    def store_output(self, pcd: torch.Tensor, xyz: torch.Tensor, rgb: torch.Tensor, acc: torch.Tensor, dpt: torch.Tensor, batch: dotdict):
+    def store_output(self, pcd: torch.Tensor, xyz: torch.Tensor, rgb: torch.Tensor, acc: torch.Tensor, dpt: torch.Tensor, batch: dotdict,
+                     basecolor: torch.Tensor | None = None, normal: torch.Tensor | None = None, metallic: torch.Tensor | None = None, roughness: torch.Tensor | None = None,
+                     relight_0: torch.Tensor | None = None, relight_1: torch.Tensor | None = None, relight_2: torch.Tensor | None = None, relight_3: torch.Tensor | None = None, relight_4: torch.Tensor | None = None):
         if pcd is not None: batch.output.resd = xyz - pcd  # for residual loss here
         batch.output.rgb_map = rgb.view(rgb.shape[0], -1, 3)  # B, H * W, 3
         batch.output.acc_map = acc.view(acc.shape[0], -1, 1)  # B, H * W, 1
@@ -630,6 +632,25 @@ class PointPlanesSampler(VolumetricVideoModule):
         # Add a background color
         if self.bg_brightness != 0:
             batch.output.rgb_map = batch.output.rgb_map + batch.output.bg_color * (1 - batch.output.acc_map)
+        
+        if basecolor is not None:
+            batch.output.basecolor = basecolor.view(basecolor.shape[0], -1, 3)
+        if normal is not None:
+            batch.output.normal = normal.view(normal.shape[0], -1, 3)
+        if metallic is not None:
+            batch.output.metallic = metallic.view(metallic.shape[0], -1, 3)
+        if roughness is not None:
+            batch.output.roughness = roughness.view(roughness.shape[0], -1, 3)
+        if relight_0 is not None:
+            batch.output.relight_0 = relight_0.view(relight_0.shape[0], -1, 3)
+        if relight_1 is not None:
+            batch.output.relight_1 = relight_1.view(relight_1.shape[0], -1, 3)
+        if relight_2 is not None:
+            batch.output.relight_2 = relight_2.view(relight_2.shape[0], -1, 3)
+        if relight_3 is not None:
+            batch.output.relight_3 = relight_3.view(relight_3.shape[0], -1, 3)
+        if relight_4 is not None:
+            batch.output.relight_4 = relight_4.view(relight_4.shape[0], -1, 3)
 
     def forward(self, batch: dotdict):
         self.init_points(batch)

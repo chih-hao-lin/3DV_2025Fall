@@ -1,0 +1,1 @@
+evc-test -c configs/projects/realtime4dv/rendering/4k4d_dance3.yaml,configs/specs/video.yaml,configs/specs/eval.yaml,configs/specs/cubic_dance3.yaml,configs/specs/ibr.yaml,configs/specs/vf0.yaml

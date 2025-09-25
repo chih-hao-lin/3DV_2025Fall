@@ -292,7 +292,6 @@ class Visualization(Enum):
     ENVMAP = auto()
     ALBEDO = auto()
     SHADING = auto()
-    ROUGHNESS = auto()
 
     # Geometry related output
     MESH = auto()
@@ -301,6 +300,17 @@ class Visualization(Enum):
 
     # Loss related output
     IMAGE_LOSS_WEIGHT = auto()
+
+    BASECOLOR = auto()
+    SHADING_NORMAL = auto()
+    METALLIC = auto()
+    ROUGHNESS = auto()
+    RELIGHT_0 = auto()
+    RELIGHT_1 = auto()
+    RELIGHT_2 = auto()
+    RELIGHT_3 = auto()
+    RELIGHT_4 = auto()
+    RELIGHT_5 = auto()
 
 class DataSplit(Enum):
     TRAIN = auto()
@@ -1641,6 +1651,64 @@ def load_resize_undist_im_bytes(imp: str,
     return buffer, K, H, W
 
 
+def load_resize_undist_im_bytes_normal(imp: str,
+                                K: np.ndarray,
+                                D: np.ndarray,
+                                c2w: np.ndarray,
+                                ratio: Union[float, List[int]] = 1.0,
+                                center_crop_size: List[int] = [-1, -1],
+                                encode_ext='.jpg',
+                                decode_flag=cv2.IMREAD_UNCHANGED,
+                                dist_opt_K: bool = False,
+                                jpeg_quality: int = 100,
+                                png_compression: int = 6
+                                ):
+    # Load image -> resize -> undistort -> save to bytes (jpeg)
+    new_imp = f'{imp}.global.png'
+    if os.path.exists(new_imp):
+        img = load_image_from_bytes(load_image_bytes(new_imp), decode_flag=decode_flag)[..., :3]  # cv2 decoding (fast)
+    else:
+        img = load_image_from_bytes(load_image_bytes(imp), decode_flag=decode_flag)[..., :3]  # cv2 decoding (fast)
+
+        img = img.astype(np.float32) / 255.0
+        img = img * 2 - 1
+        img = img @ np.linalg.inv(c2w[:3, :3])
+        img = img * 0.5 + 0.5
+        img = (img.clip(0, 1) * 255.0).astype(np.uint8)
+        cv2.imwrite(new_imp, img)
+
+    oH, oW = img.shape[:2]
+
+    if dist_opt_K and np.sum(np.abs(D)) != 0.0:
+        newCameraMatrix, _ = cv2.getOptimalNewCameraMatrix(K, D, (oW, oH), 0, (oW, oH))
+        img = cv2.undistort(img, K, D, newCameraMatrix=newCameraMatrix)
+        K = newCameraMatrix
+    elif np.sum(np.abs(D)) != 0.0:
+        img = cv2.undistort(img, K, D)
+
+    # Maybe update image size
+    if not ((isinstance(ratio, float) and ratio == 1.0)):
+        if isinstance(ratio, float):
+            H, W = int(oH * ratio), int(oW * ratio)
+        else:
+            H, W = ratio  # ratio is actually the target image size
+        rH, rW = H / oH, W / oW
+        K = K.copy()
+        K[0:1] = K[0:1] * rW  # K[0, 0] *= rW
+        K[1:2] = K[1:2] * rH  # K[1, 1] *= rH
+
+        img = cv2.resize(img, (W, H), interpolation=cv2.INTER_AREA)  # H, W, 3, uint8
+
+    # Crop the image and intrinsic matrix if specified
+    if center_crop_size[0] > 0:
+        img, K, H, W = center_crop_img_ixt(img, K, H, W, center_crop_size)
+
+    is_success, buffer = cv2.imencode(encode_ext, img, [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality, cv2.IMWRITE_PNG_COMPRESSION, png_compression])
+
+    if 'H' not in locals(): H, W = oH, oW
+    return buffer, K, H, W
+
+
 def center_crop_img_ixt(img: np.ndarray, K: np.ndarray, H: int, W: int,
                         center_crop_size: Union[int, List[int]]):
     # Parse the original size and the target crop size
@@ -1699,6 +1767,59 @@ def load_resize_undist_ims_bytes(ims: np.ndarray,
     # Should we batch these instead of loading?
     out = parallel_execution(ims, Ks, Ds, ratio, center_crop_size,
                              action=load_resize_undist_im_bytes,
+                             desc=desc, print_progress=True,
+                             **kwargs,
+                             )
+
+    ims_bytes, Ks, Hs, Ws = zip(*out)  # is this OK?
+    ims_bytes, Ks, Hs, Ws = np.asarray(ims_bytes, dtype=object), np.asarray(Ks), np.asarray(Hs), np.asarray(Ws)
+    # ims_bytes = ims_bytes.reshape(sh)  # numpy array of bytesio
+    Hs = Hs.reshape(sh)  # should all be the same?
+    Ws = Ws.reshape(sh)  # should all be the same?
+    Ks = Ks.reshape(sh + (3, 3))  # should all be the same?
+
+    return ims_bytes, Ks, Hs, Ws
+
+
+def load_resize_undist_ims_bytes_normal(ims: np.ndarray,
+                                 Ks: np.ndarray,
+                                 Ds: np.ndarray,
+                                 c2ws: np.ndarray,
+                                 ratio: Union[float, List[int], List[float]] = 1.0,
+                                 center_crop_size: List[int] = [-1, -1],
+                                 desc="Loading image bytes from disk",
+                                 **kwargs):
+    sh = ims.shape  # V, N
+    # Ks = np.broadcast_to(Ks[:, None], (sh + (3, 3)))
+    # Ds = np.broadcast_to(Ds[:, None], (sh + (1, 5)))
+
+    ims = ims.reshape((np.prod(sh)))
+    # from easyvolcap.utils.dist_utils import get_rank
+    # if not get_rank(): __import__('easyvolcap.utils.console_utils', fromlist=['debugger']).debugger()
+    # else:
+    #     while 1: pass
+    Ks = Ks.reshape((np.prod(sh), 3, 3))
+    Ds = Ds.reshape((np.prod(sh), 1, 5))
+    c2ws = c2ws.reshape((np.prod(sh), 3, 4))
+
+    ims = list(ims)
+    Ks = list(Ks)
+    Ds = list(Ds)  # only convert outer most dim to list
+    c2ws = list(c2ws)
+
+    if isinstance(ratio, list) and len(ratio) and isinstance(ratio[0], float):
+        ratio = np.broadcast_to(np.asarray(ratio)[:, None], sh)  # V, N
+        ratio = ratio.reshape((np.prod(sh)))
+        ratio = list(ratio)
+    elif isinstance(ratio, list):
+        ratio = np.asarray(ratio)  # avoid expansion in parallel execution
+
+    if isinstance(center_crop_size, list):
+        center_crop_size = np.asarray(center_crop_size)  # avoid expansion
+
+    # Should we batch these instead of loading?
+    out = parallel_execution(ims, Ks, Ds, c2ws, ratio, center_crop_size,
+                             action=load_resize_undist_im_bytes_normal,
                              desc=desc, print_progress=True,
                              **kwargs,
                              )

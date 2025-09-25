@@ -50,7 +50,7 @@ from easyvolcap.utils.dist_utils import get_rank, get_world_size, get_distribute
 from easyvolcap.utils.cam_utils import average_c2ws, align_c2ws, average_w2cs, Sourcing
 from easyvolcap.utils.math_utils import affine_inverse, affine_padding, torch_inverse_3x3, point_padding
 from easyvolcap.utils.bound_utils import get_bound_2d_bound, get_bounds, monotonic_near_far, get_bound_3d_near_far
-from easyvolcap.utils.data_utils import DataSplit, UnstructuredTensors, load_resize_undist_ims_bytes, load_image_from_bytes, as_torch_func, to_cuda, to_cpu, to_tensor, export_pts, load_pts, decode_crop_fill_ims_bytes, decode_fill_ims_bytes
+from easyvolcap.utils.data_utils import DataSplit, UnstructuredTensors, load_resize_undist_ims_bytes, load_image_from_bytes, as_torch_func, load_resize_undist_ims_bytes_normal, to_cuda, to_cpu, to_tensor, export_pts, load_pts, decode_crop_fill_ims_bytes, decode_fill_ims_bytes
 
 cv2.setNumThreads(1)  # MARK: only 1 thread for opencv undistortion, high cpu, not faster
 
@@ -100,6 +100,18 @@ class VolumetricVideoDataset(Dataset):
                  # Normal related configs
                  normals_dir: str = 'normals',
                  use_normals: bool = False,
+
+                 basecolor_dir: str = 'basecolor',
+                 use_basecolor: bool = False,
+
+                 shading_normal_dir: str = 'normal',
+                 use_shading_normal: bool = False,
+
+                 metallic_dir: str = 'metallic',
+                 use_metallic: bool = False,
+
+                 roughness_dir: str = 'roughness',
+                 use_roughness: bool = False,
 
                  # Human priors # TODO: maybe move these to a different dataset?
                  use_smpls: bool = False,  # use smpls as prior
@@ -202,6 +214,10 @@ class VolumetricVideoDataset(Dataset):
         self.vhulls_dir = vhulls_dir
         self.bkgds_dir = bkgds_dir
         self.normals_dir = normals_dir
+        self.basecolor_dir = basecolor_dir
+        self.shading_normal_dir = shading_normal_dir
+        self.metallic_dir = metallic_dir
+        self.roughness_dir = roughness_dir
         self.ims_pattern = ims_pattern
 
         # Dynamically tunable configurations
@@ -243,6 +259,10 @@ class VolumetricVideoDataset(Dataset):
         self.use_smpls = use_smpls  # use smpls as a prior
         self.use_bkgds = use_bkgds  # use background images as a prior
         self.use_normals = use_normals  # use normals as a prior
+        self.use_basecolor = use_basecolor
+        self.use_shading_normal = use_shading_normal
+        self.use_metallic = use_metallic
+        self.use_roughness = use_roughness
         self.ddp_shard_dataset = ddp_shard_dataset  # shard the dataset between DDP processes
         self.imsize_overwrite = imsize_overwrite  # overwrite loaded image sizes (for enerf)
         self.immask_crop = immask_crop  # maybe crop stored jpeg bytes
@@ -444,6 +464,38 @@ class VolumetricVideoDataset(Dataset):
             if not os.path.exists(self.bgs[0]):
                 self.bgs = np.asarray([bg.replace('.jpg', '.png') for bg in self.bgs])
             self.bgs_dir = join(*split(dirname(self.bgs[0]))[:-1])  # logging only
+        
+        if self.use_basecolor:
+            self.bcs = np.asarray([im.replace(self.images_dir, self.basecolor_dir) for im in self.ims.ravel()]).reshape(self.ims.shape)
+            if not exists(self.bcs[0, 0]):
+                self.bcs = np.asarray([bc.replace('.png', '.jpg') for bc in self.bcs.ravel()]).reshape(self.bcs.shape)
+            if not exists(self.bcs[0, 0]):
+                self.bcs = np.asarray([bc.replace('.jpg', '.png') for bc in self.bcs.ravel()]).reshape(self.bcs.shape)
+            self.bcs_dir = join(*split(dirname(self.bcs[0, 0]))[:-1])
+        
+        if self.use_shading_normal:
+            self.sns = np.asarray([im.replace(self.images_dir, self.shading_normal_dir) for im in self.ims.ravel()]).reshape(self.ims.shape)
+            if not exists(self.sns[0, 0]):
+                self.sns = np.asarray([sn.replace('.png', '.jpg') for sn in self.sns.ravel()]).reshape(self.sns.shape)
+            if not exists(self.sns[0, 0]):
+                self.sns = np.asarray([sn.replace('.jpg', '.png') for sn in self.sns.ravel()]).reshape(self.sns.shape)
+            self.sns_dir = join(*split(dirname(self.sns[0, 0]))[:-1])
+        
+        if self.use_metallic:
+            self.mts = np.asarray([im.replace(self.images_dir, self.metallic_dir) for im in self.ims.ravel()]).reshape(self.ims.shape)
+            if not exists(self.mts[0, 0]):
+                self.mts = np.asarray([mt.replace('.png', '.jpg') for mt in self.mts.ravel()]).reshape(self.mts.shape)
+            if not exists(self.mts[0, 0]):
+                self.mts = np.asarray([mt.replace('.jpg', '.png') for mt in self.mts.ravel()]).reshape(self.mts.shape)
+            self.mts_dir = join(*split(dirname(self.mts[0, 0]))[:-1])
+        
+        if self.use_roughness:
+            self.rgs = np.asarray([im.replace(self.images_dir, self.roughness_dir) for im in self.ims.ravel()]).reshape(self.ims.shape)
+            if not exists(self.rgs[0, 0]):
+                self.rgs = np.asarray([rg.replace('.png', '.jpg') for rg in self.rgs.ravel()]).reshape(self.rgs.shape)
+            if not exists(self.rgs[0, 0]):
+                self.rgs = np.asarray([rg.replace('.jpg', '.png') for rg in self.rgs.ravel()]).reshape(self.rgs.shape)
+            self.rgs_dir = join(*split(dirname(self.rgs[0, 0]))[:-1])
 
     def load_bytes(self):
         # Camera distortions are only applied on the ground truth image, the rendering model does not include these
@@ -491,6 +543,30 @@ class VolumetricVideoDataset(Dataset):
                 load_resize_undist_ims_bytes(self.nms, ori_Ks.numpy(), ori_Ds.numpy(), ratio, self.center_crop_size,
                                              f'Loading norm bytes for {blue(self.nms_dir)} {magenta(self.split.name)}',
                                              dist_opt_K=self.dist_opt_K, encode_ext=self.encode_ext)
+            
+        if self.use_basecolor:
+            self.bcs_bytes, self.Ks, self.Hs, self.Ws = \
+                load_resize_undist_ims_bytes(self.bcs, ori_Ks.numpy(), ori_Ds.numpy(), ratio, self.center_crop_size,
+                                             f'Loading basecolor bytes for {blue(self.bcs_dir)} {magenta(self.split.name)}',
+                                             dist_opt_K=self.dist_opt_K, encode_ext=self.encode_ext)
+                                        
+        if self.use_shading_normal:
+            self.sns_bytes, self.Ks, self.Hs, self.Ws = \
+                load_resize_undist_ims_bytes_normal(self.sns, ori_Ks.numpy(), ori_Ds.numpy(), self.c2ws.numpy(), ratio, self.center_crop_size,
+                                             f'Loading shading normal bytes for {blue(self.sns_dir)} {magenta(self.split.name)}',
+                                             dist_opt_K=self.dist_opt_K, encode_ext=self.encode_ext)
+        
+        if self.use_metallic:
+            self.mts_bytes, self.Ks, self.Hs, self.Ws = \
+                load_resize_undist_ims_bytes(self.mts, ori_Ks.numpy(), ori_Ds.numpy(), ratio, self.center_crop_size,
+                                             f'Loading metallic bytes for {blue(self.mts_dir)} {magenta(self.split.name)}',
+                                             dist_opt_K=self.dist_opt_K, encode_ext=self.encode_ext)
+        
+        if self.use_roughness:
+            self.rgs_bytes, self.Ks, self.Hs, self.Ws = \
+                load_resize_undist_ims_bytes(self.rgs, ori_Ks.numpy(), ori_Ds.numpy(), ratio, self.center_crop_size,
+                                             f'Loading roughness bytes for {blue(self.rgs_dir)} {magenta(self.split.name)}',
+                                             dist_opt_K=self.dist_opt_K, encode_ext=self.encode_ext)
 
         # Image pre cacheing (from disk to memory)
         self.ims_bytes, self.Ks, self.Hs, self.Ws = \
@@ -514,6 +590,18 @@ class VolumetricVideoDataset(Dataset):
 
             if hasattr(self, 'nms_bytes'): self.nms_bytes, mks_bytes, Ks, Hs, Ws, crop_xs, crop_ys = \
                 decode_crop_fill_ims_bytes(self.nms_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks nrms for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            
+            if hasattr(self, 'bcs_bytes'): self.bcs_bytes, mks_bytes, Ks, Hs, Ws, crop_xs, crop_ys = \
+                decode_crop_fill_ims_bytes(self.bcs_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks basecolor for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            
+            if hasattr(self, 'sns_bytes'): self.sns_bytes, mks_bytes, Ks, Hs, Ws, crop_xs, crop_ys = \
+                decode_crop_fill_ims_bytes(self.sns_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks shading normal for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            
+            if hasattr(self, 'mts_bytes'): self.mts_bytes, mks_bytes, Ks, Hs, Ws, crop_xs, crop_ys = \
+                decode_crop_fill_ims_bytes(self.mts_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks metallic for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            
+            if hasattr(self, 'rgs_bytes'): self.rgs_bytes, mks_bytes, Ks, Hs, Ws, crop_xs, crop_ys = \
+                decode_crop_fill_ims_bytes(self.rgs_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks roughness for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
 
             self.ims_bytes, self.mks_bytes, self.Ks, self.Hs, self.Ws, self.crop_xs, self.crop_ys = \
                 decode_crop_fill_ims_bytes(self.ims_bytes, self.mks_bytes, self.Ks.numpy(), self.Rs.numpy(), self.Ts.numpy(), bounds.numpy(), f'Cropping msks imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
@@ -529,6 +617,10 @@ class VolumetricVideoDataset(Dataset):
             self.ims_bytes = decode_fill_ims_bytes(self.ims_bytes, self.mks_bytes, f'Filling msks imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
             if hasattr(self, 'dps_bytes'): self.dps_bytes = decode_fill_ims_bytes(self.dps_bytes, self.mks_bytes, f'Filling dpts imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext='.exr')
             if hasattr(self, 'nms_bytes'): self.nms_bytes = decode_fill_ims_bytes(self.nms_bytes, self.mks_bytes, f'Filling norm imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            if hasattr(self, 'bcs_bytes'): self.bcs_bytes = decode_fill_ims_bytes(self.bcs_bytes, self.mks_bytes, f'Filling basecolor imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            if hasattr(self, 'sns_bytes'): self.sns_bytes = decode_fill_ims_bytes(self.sns_bytes, self.mks_bytes, f'Filling shading normal imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            if hasattr(self, 'mts_bytes'): self.mts_bytes = decode_fill_ims_bytes(self.mts_bytes, self.mks_bytes, f'Filling metallic imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
+            if hasattr(self, 'rgs_bytes'): self.rgs_bytes = decode_fill_ims_bytes(self.rgs_bytes, self.mks_bytes, f'Filling roughness imgs for {blue(self.data_root)} {magenta(self.split.name)}', encode_ext=self.encode_ext)
 
         # To make memory access faster, store raw floats in memory
         if self.cache_raw:
@@ -537,6 +629,10 @@ class VolumetricVideoDataset(Dataset):
             if hasattr(self, 'dps_bytes'): self.dps_bytes = to_tensor([load_image_from_bytes(x, normalize=False) for x in tqdm(self.dps_bytes, desc=f'Caching dps for {blue(self.data_root)} {magenta(self.split.name)}')])
             if hasattr(self, 'bgs_bytes'): self.bgs_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.bgs_bytes, desc=f'Caching bgs for {blue(self.data_root)} {magenta(self.split.name)}')])
             if hasattr(self, 'nms_bytes'): self.nms_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.nms_bytes, desc=f'Caching nms for {blue(self.data_root)} {magenta(self.split.name)}')])
+            if hasattr(self, 'bcs_bytes'): self.bcs_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.bcs_bytes, desc=f'Caching bcs for {blue(self.data_root)} {magenta(self.split.name)}')])
+            if hasattr(self, 'sns_bytes'): self.sns_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.sns_bytes, desc=f'Caching sns for {blue(self.data_root)} {magenta(self.split.name)}')])
+            if hasattr(self, 'mts_bytes'): self.mts_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.mts_bytes, desc=f'Caching mts for {blue(self.data_root)} {magenta(self.split.name)}')])
+            if hasattr(self, 'rgs_bytes'): self.rgs_bytes = to_tensor([load_image_from_bytes(x, normalize=True) for x in tqdm(self.rgs_bytes, desc=f'Caching rgs for {blue(self.data_root)} {magenta(self.split.name)}')])
         else:
             # Avoid splitting memory for bytes objects
             self.ims_bytes = UnstructuredTensors(self.ims_bytes)
@@ -544,6 +640,10 @@ class VolumetricVideoDataset(Dataset):
             if hasattr(self, 'dps_bytes'): self.dps_bytes = UnstructuredTensors(self.dps_bytes)
             if hasattr(self, 'bgs_bytes'): self.bgs_bytes = UnstructuredTensors(self.bgs_bytes)
             if hasattr(self, 'nms_bytes'): self.nms_bytes = UnstructuredTensors(self.nms_bytes)
+            if hasattr(self, 'bcs_bytes'): self.bcs_bytes = UnstructuredTensors(self.bcs_bytes)
+            if hasattr(self, 'sns_bytes'): self.sns_bytes = UnstructuredTensors(self.sns_bytes)
+            if hasattr(self, 'mts_bytes'): self.mts_bytes = UnstructuredTensors(self.mts_bytes)
+            if hasattr(self, 'rgs_bytes'): self.rgs_bytes = UnstructuredTensors(self.rgs_bytes)
 
     def load_vhulls(self):
 
@@ -843,13 +943,33 @@ class VolumetricVideoDataset(Dataset):
             nm_bytes = self.nms_bytes[view_index * self.n_latents + latent_index]
         else:
             nm_bytes = None
+        
+        if self.use_basecolor:
+            bc_bytes = self.bcs_bytes[view_index * self.n_latents + latent_index]
+        else:
+            bc_bytes = None
+        
+        if self.use_shading_normal:
+            sn_bytes = self.sns_bytes[view_index * self.n_latents + latent_index]
+        else:
+            sn_bytes = None
+        
+        if self.use_metallic:
+            mt_bytes = self.mts_bytes[view_index * self.n_latents + latent_index]
+        else:
+            mt_bytes = None
+        
+        if self.use_roughness:
+            rg_bytes = self.rgs_bytes[view_index * self.n_latents + latent_index]
+        else:
+            rg_bytes = None
 
-        return im_bytes, mk_bytes, wt_bytes, dp_bytes, bg_bytes, nm_bytes
+        return im_bytes, mk_bytes, wt_bytes, dp_bytes, bg_bytes, nm_bytes, bc_bytes, sn_bytes, mt_bytes, rg_bytes
 
     def get_image(self, view_index: int, latent_index: int):
         # Load bytes (rgb, msk, wet, bg)
-        im_bytes, mk_bytes, wt_bytes, dp_bytes, bg_bytes, nm_bytes = self.get_image_bytes(view_index, latent_index)
-        rgb, msk, wet, dpt, bkg, norm = None, None, None, None, None, None
+        im_bytes, mk_bytes, wt_bytes, dp_bytes, bg_bytes, nm_bytes, bc_bytes, sn_bytes, mt_bytes, rg_bytes = self.get_image_bytes(view_index, latent_index)
+        rgb, msk, wet, dpt, bkg, norm, basecolor, shading_normal, metallic, roughness = None, None, None, None, None, None, None, None, None, None
 
         # Load image from bytes
         if self.cache_raw:
@@ -897,8 +1017,32 @@ class VolumetricVideoDataset(Dataset):
                 norm = torch.as_tensor(nm_bytes)
             else:
                 norm = torch.as_tensor(load_image_from_bytes(nm_bytes, normalize=True))  # readin as is
+        
+        if bc_bytes is not None:
+            if self.cache_raw:
+                basecolor = torch.as_tensor(bc_bytes)
+            else:
+                basecolor = torch.as_tensor(load_image_from_bytes(bc_bytes, normalize=True))  # readin as is
+        
+        if sn_bytes is not None:
+            if self.cache_raw:
+                shading_normal = torch.as_tensor(sn_bytes)
+            else:
+                shading_normal = torch.as_tensor(load_image_from_bytes(sn_bytes, normalize=True))  # readin as is
+        
+        if mt_bytes is not None:
+            if self.cache_raw:
+                metallic = torch.as_tensor(mt_bytes)
+            else:
+                metallic = torch.as_tensor(load_image_from_bytes(mt_bytes, normalize=True))  # readin as is
 
-        return rgb, msk, wet, dpt, bkg, norm
+        if rg_bytes is not None:
+            if self.cache_raw:
+                roughness = torch.as_tensor(rg_bytes)
+            else:
+                roughness = torch.as_tensor(load_image_from_bytes(rg_bytes, normalize=True))  # readin as is
+
+        return rgb, msk, wet, dpt, bkg, norm, basecolor, shading_normal, metallic, roughness
 
     def get_camera_params(self, view_index, latent_index):
         latent_index = self.virtual_to_physical(latent_index)
@@ -1132,7 +1276,7 @@ class VolumetricVideoDataset(Dataset):
     def get_ground_truth(self, index):
         # Load actual images, mask, sampling weights
         output = self.get_metadata(index)
-        rgb, msk, wet, dpt, bkg, norm = self.get_image(output.view_index, output.latent_index)  # H, W, 3
+        rgb, msk, wet, dpt, bkg, norm, basecolor, shading_normal, metallic, roughness = self.get_image(output.view_index, output.latent_index)  # H, W, 3
         H, W = rgb.shape[:2]
 
         # Maybe crop images
@@ -1153,6 +1297,10 @@ class VolumetricVideoDataset(Dataset):
             if dpt is not None: dpt = dpt[y:y + h, x:x + w]
             if bkg is not None: bkg = bkg[y:y + h, x:x + w]
             if norm is not None: norm = norm[y:y + h, x:x + w]
+            if basecolor is not None: basecolor = basecolor[y:y + h, x:x + w]
+            if shading_normal is not None: shading_normal = shading_normal[y:y + h, x:y + w]
+            if metallic is not None: metallic = metallic[y:y + h, x:x + w]
+            if roughness is not None: roughness = roughness[y:y + h, x:x + w]
             H, W = h, w
 
         # FIXME: Should add mutex to protect this， for now, multi-process and dataloading doesn't work well with each other
@@ -1178,6 +1326,10 @@ class VolumetricVideoDataset(Dataset):
             if dpt is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(dpt)
             if bkg is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(bkg)
             if norm is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(norm)
+            if basecolor is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(basecolor)
+            if shading_normal is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(shading_normal)
+            if metallic is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(metallic)
+            if roughness is not None: as_torch_func(partial(cv2.resize, dsize=(W, H), interpolation=cv2.INTER_AREA))(roughness)
 
         # Prepare for a different rendering center crop ratio
         if (len(render_center_crop_ratio.shape) and  # avoid length of 0-d tensor error, check length of shape
@@ -1195,6 +1347,10 @@ class VolumetricVideoDataset(Dataset):
             if dpt is not None: dpt[y: y + h, x: x + w, :]
             if bkg is not None: bkg[y: y + h, x: x + w, :]
             if norm is not None: norm[y: y + h, x: x + w, :]
+            if basecolor is not None: basecolor = basecolor[y: y + h, x: x + w, :]
+            if shading_normal is not None: shading_normal = shading_normal[y: y + h, x: x + w, :]
+            if metallic is not None: metallic = metallic[y: y + h, x: x + w, :]
+            if roughness is not None: roughness = roughness[y: y + h, x: x + w, :]
 
             # Crop the intrinsics
             self.crop_ixts(output, x, y, w, h)
@@ -1243,6 +1399,10 @@ class VolumetricVideoDataset(Dataset):
             if dpt is not None: dpt = dpt[y: y + h, x: x + w, :]
             if bkg is not None: bkg = bkg[y: y + h, x: x + w, :]
             if norm is not None: norm = norm[y: y + h, x: x + w, :]
+            if basecolor is not None: basecolor = basecolor[y: y + h, x: x + w, :]
+            if shading_normal is not None: shading_normal = shading_normal[y: y + h, x: x + w, :]
+            if metallic is not None: metallic = metallic[y: y + h, x: x + w, :]
+            if roughness is not None: roughness = roughness[y: y + h, x: x + w, :]
 
         output.rgb = rgb.reshape(-1, 3)  # full image in case you need it
         output.msk = msk.reshape(-1, 1)  # full mask
@@ -1250,6 +1410,10 @@ class VolumetricVideoDataset(Dataset):
         if dpt is not None: output.dpt = dpt.reshape(-1, 1)
         if bkg is not None: output.bkg = bkg.reshape(-1, 3)
         if norm is not None: output.norm = norm.reshape(-1, 3)
+        if basecolor is not None: output.basecolor = basecolor.reshape(-1, 3)
+        if shading_normal is not None: output.shading_normal = shading_normal.reshape(-1, 3)
+        if metallic is not None: output.metallic = metallic.reshape(-1, 3)
+        if roughness is not None: output.roughness = roughness.reshape(-1, 3)
 
         if should_crop_ixt:
             # Prepare the resized ixts
