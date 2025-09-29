@@ -2,7 +2,7 @@
 ## Using the code
 1.) Download the code.<br/>
 2.) Set up the environment as detailed below. <br/>
-3.) Download the 3DOI files and put it into a folder called "threedoi" in the same folder as the main .ipynb file. <br/>
+3.) Download the 3DOI files here](https://github.com/JasonQSY/3DOI/tree/main?tab=readme-ov-file) and copy them into a folder called "threedoi" in the same folder as the main .ipynb file. <br/>
 4.) Download the 3DOI pretrained checkpoint, which can be found [here](https://github.com/JasonQSY/3DOI/tree/main?tab=readme-ov-file). The file name should be "checkpoint_20230515.pth". Put this file in the same folder as the main .ipynb file.<br/>
 5.) Copy and paste the "merged.yaml" file into the "configs" folder in the 3DOI folder (threedoi -> monoarti -> configs). <br/>
 6.) Open the .ipynb file with Jupyter notebook and run all of the cells. Make sure to have your new environment enabled as the kernel.<br/>
