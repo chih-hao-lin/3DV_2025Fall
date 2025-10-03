@@ -1,0 +1,11 @@
+python foot_fix/post_process_foot_fix.py \
+  --hsfm-pkl HSfM_RELEASE/demo_output/0/hsfm_output_smplx.pkl \
+  --out-pkl HSfM_RELEASE/demo_output/0/hsfm_output_smplx_footfix.pkl \
+  --up-axis y \
+  --q-quantile 0.6 \
+  --lowest-quantile 0.3 \
+  --plane-inlier-thresh 0.02 \
+  --plane-min-inlier-ratio 0.4 \
+  --plane-ransac-iters 1500 \
+  --jump-threshold 0.2 \
+  --smplx-model-folder HSfM_RELEASE/body_models
