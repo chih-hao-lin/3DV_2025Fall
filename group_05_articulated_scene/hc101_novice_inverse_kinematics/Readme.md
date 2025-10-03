@@ -14,4 +14,6 @@ pip install mpl_toolkits
 ```
 
 ### Running the script:
+```
 python inverse_SingleArm.py
+```
