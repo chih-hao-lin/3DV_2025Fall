@@ -1,0 +1,15 @@
+viser
+tyro
+supervision
+transformers
+warp-lang
+git+https://github.com/hongsukchoi/chumpy
+git+https://github.com/hongsukchoi/smplx
+timm
+einops
+scikit-learn 
+boto3
+requests
+pyliblzfse
+h5py
+yacs
