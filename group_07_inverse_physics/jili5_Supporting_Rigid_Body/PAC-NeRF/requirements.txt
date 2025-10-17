@@ -1,0 +1,7 @@
+torch_scatter
+ninja
+tqdm
+imageio
+imageio-ffmpeg
+mmcv==1.7.0
+taichi==1.2
