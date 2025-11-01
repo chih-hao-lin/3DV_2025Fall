@@ -1,0 +1,13 @@
+wandb
+datasets
+huggingface-hub
+rosbags 
+rosbags-image
+rosbags-dataframe
+pillow 
+imageio 
+imageio-ffmpeg
+moviepy
+google-generativeai
+pandas
+matplotlib

@@ -1,0 +1,23 @@
+# FORWARD DRIVING PROMPTS
+
+- "Robot POV on a paved path surrounded by tall campus trees and red brick buildings. Lamp posts line the path, their metallic surfaces reflecting the soft overcast light. Grass and fallen leaves border both sides of the walkway, and the faint hum of wind filters through the branches. The perspective remains low and steady, showing cracks in the pavement as the robot glides forward. the robot goes forward 4.2metres 18degree right"
+
+- "Low-angle robot POV moving slowly through mulch beneath a cluster of pine trees. The ground is scattered with needles and small twigs. Ahead, a brick building with arched windows stands partially hidden by the trees, and a faint reflection can be seen in its glass panes. The camera maintains focus on the bark textures as motion continues. the robot goes forward 2.7metres 26degree left"
+
+- "Robot POV: The camera advances along a cracked concrete campus sidewalk bordered by thin strips of grass. To the left is an open courtyard, and to the right, a row of parked bicycles and metallic racks glint faintly under the morning haze. Trees in the background sway gently, and the hum of distant ventilation units is audible. the robot goes forward 3.9metres 11degree right"
+
+- "Ground-level robot view traversing a grassy quad. A large tree trunk rises from the center of the frame, rough bark illuminated by diffused daylight. Beyond it, a bright red fire hydrant contrasts against the muted greens and browns. A brick building and a bell tower stand in the distance, partially veiled by thin mist. The motion is deliberate and continuous. the robot goes forward 5.1metres 33degree left"
+
+- "Robot POV: Moving carefully toward a gray metallic utility box beside a weathered brick wall. The ground beneath is cracked concrete dotted with patches of moss. Small plants grow between the edges, and fallen leaves shift slightly in the breeze. Overhead, the cloudy sky casts a uniform tone on the scene. the robot goes forward 1.6metres 14degree right"
+
+# BACKWARD DRIVING PROMPTS
+
+- "Robot POV on concrete adjacent to a red brick building. The camera begins near the base of a tree whose roots emerge through the mulch, then slowly eases backward. The soft hum of distant traffic is heard, and mist hangs low in the air. As the camera retreats, more of the building's white-trimmed windows come into view, framed by green shrubbery. the robot goes backward 0.8metres 22degree left"
+
+- "Low robot view positioned near a black lamp post in a park-like setting. The camera angle emphasizes the rough texture of the pole and the surrounding patch of grass, strewn with fallen leaves. In the background, a paved path and benches lead toward a fog-shrouded tower. The robot retreats gently, maintaining focus on the lamp post as perspective widens. the robot goes backward 1.2metres 35degree right"
+
+- "Robot POV stationed beside a weathered picnic table on uneven grass. The metal legs of the table reflect faint light, while trees form a canopy overhead. Beyond the trees, a brick building with tall windows is visible. As the robot moves backward, the scene opens to reveal the entire table and surrounding parkland, still under a calm, cloudy sky. the robot goes backward 2.4metres 17degree left"
+
+- "Robot POV positioned near the edge of a quiet parking lot. The ground is covered with mulch and stray sticks, while cars can be seen through a line of trees in the background. The low-mounted camera backs up carefully, capturing reflections on wet pavement and the soft rustle of leaves disturbed by movement. the robot goes backward 0.6metres 41degree right"
+
+- "Ground-level robot perspective close to the corner of a brick building. The wall's lower edge is built from gray cinder blocks covered with dust and debris. As the robot reverses, the field of view expands to include surrounding mulch, sparse plants, and a faint reflection in a nearby window. The ambient sound of wind and distant footsteps fades as the scene stabilizes. the robot goes backward 1.9metres 9degree left"

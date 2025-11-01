@@ -1,0 +1,27 @@
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+use_cpu: false
+dynamo_backend: no
+
+num_processes: 1
+num_machines: 1
+machine_rank: 0
+gpu_ids: all
+
+mixed_precision: bf16
+
+# Inline DeepSpeed settings (since you chose not to supply a JSON file)
+deepspeed_config:
+  zero_stage: 2
+  offload_optimizer_device: none
+  offload_param_device: none
+  gradient_accumulation_steps: 1
+  gradient_clipping: 0.0
+  zero3_init_flag: false
+  bf16: true
+
+# Unused/left default
+tpu_use_cluster: false
+tpu_name: null
+fsdp_config: {}
+megatron_lm_config: {}
