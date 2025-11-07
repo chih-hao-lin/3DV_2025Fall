@@ -1,0 +1,365 @@
+================================================================================
+GO-WITH-THE-FLOW MOTION TRANSFER PIPELINE - COMPLETE GUIDE
+================================================================================
+
+OVERVIEW
+--------
+Transfer motion patterns from one video to generate completely new videos
+with the same dynamics but different visual content.
+
+TWO-STEP PROCESS
+----------------
+
+STEP 1: Extract Motion (flow_warp environment)
+  Tool: make_warped_noise.py
+  Input: Video file or URL
+  Output: Warped noise (motion representation)
+  Time: ~1-3 minutes
+
+STEP 2: Generate Video (flow environment)
+  Tool: cut_and_drag_inference.py
+  Input: Warped noise + Text prompt (or image)
+  Output: New video with transferred motion
+  Time: ~5-15 minutes
+
+================================================================================
+QUICK START - USING EXISTING DATA
+================================================================================
+
+You already have motion extracted in: my_warped_noise/
+
+Generate a video NOW:
+
+conda activate flow
+python cut_and_drag_inference.py my_warped_noise \
+    --prompt "A dancing flame with vibrant colors" \
+    --output_mp4_path flame_dance.mp4 \
+    --device cuda \
+    --num_inference_steps 20
+
+Time: ~3-5 minutes
+Output: flame_dance.mp4
+
+================================================================================
+FULL PIPELINE - EXTRACT NEW MOTION
+================================================================================
+
+# Step 1: Extract motion from a video
+conda activate flow_warp
+
+# Option A: Use direct URL (public domain video)
+python make_warped_noise.py \
+    "https://cdn.pixabay.com/video/2023/08/05/174963-851965097_tiny.mp4" \
+    --output_folder new_dance_motion
+
+# Option B: Use local file
+python make_warped_noise.py /path/to/video.mp4 \
+    --output_folder my_motion
+
+# Step 2: Generate video with the motion
+conda activate flow
+python cut_and_drag_inference.py new_dance_motion \
+    --prompt "A cartoon robot dancing energetically" \
+    --output_mp4_path robot_dance.mp4 \
+    --device cuda \
+    --num_inference_steps 30
+
+================================================================================
+PARAMETERS GUIDE
+================================================================================
+
+make_warped_noise.py
+--------------------
+Required:
+  <video_path>        Path or URL to source video
+  --output_folder     Where to save results
+
+What it does:
+  - Resizes video to 480x720, 49 frames
+  - Extracts optical flow using RAFT
+  - Creates warped noise representation
+  - Saves visualization and flow data
+
+Output files:
+  noises.npy         Main output (warped noise)
+  flows_dxdy.npy     Optical flow fields
+  input.mp4          Preprocessed video
+  first_frame.png    Reference frame
+  noise_video.mp4    Visualization
+
+cut_and_drag_inference.py
+--------------------------
+Required:
+  <noise_folder>      Folder with warped noise
+
+Key options:
+  --prompt            Text description (T2V mode)
+  --image_path        Starting image (I2V mode)
+  --output_mp4_path   Output filename
+  --device            cuda or cpu
+  --num_inference_steps  Quality (20=fast, 50=high)
+  --degradation       Motion strength (0.0=full, 1.0=none)
+
+Models available:
+  I2V5B (default)     Image-to-Video, 5B params
+  T2V5B               Text-to-Video, 5B params
+  T2V2B               Text-to-Video, 2B params (faster)
+
+================================================================================
+DEGRADATION CONTROL
+================================================================================
+
+Control how much motion is transferred:
+
+--degradation 0.0    Full motion transfer (recommended)
+                     Output follows input motion exactly
+
+--degradation 0.3    Mostly motion (70% input, 30% random)
+                     Slight variation from input
+
+--degradation 0.5    Balanced (50% input, 50% random)
+                     Mix of structure and freedom
+
+--degradation 0.7    Mostly random (30% input, 70% random)
+                     Loose motion reference
+
+--degradation 1.0    No motion transfer
+                     Completely random, no input motion
+
+Formula: output = (1 - deg) × warped + deg × random
+
+================================================================================
+TEST VIDEOS (PUBLIC DOMAIN)
+================================================================================
+
+Pixabay Videos (all public domain, no attribution required):
+
+# Dance/Movement
+https://cdn.pixabay.com/video/2023/08/05/174963-851965097_tiny.mp4
+
+# Nature/Water
+https://cdn.pixabay.com/video/2021/08/31/87197-593755226_tiny.mp4
+
+# Abstract Motion
+https://cdn.pixabay.com/video/2024/01/24/197780-906034997_tiny.mp4
+
+Use any of these for testing:
+python make_warped_noise.py "<URL>" --output_folder test_motion
+
+================================================================================
+EXAMPLE PROMPTS
+================================================================================
+
+Artistic Styles:
+  "A watercolor painting in motion"
+  "An oil painting with visible brush strokes"
+  "A pencil sketch animation"
+  "A glowing neon sign"
+
+Characters:
+  "A cartoon robot dancing"
+  "A dancing skeleton made of flames"
+  "A holographic figure performing"
+  "Colorful balloons floating"
+
+Abstract:
+  "Flowing liquid metal"
+  "Dancing flames and smoke"
+  "Swirling galaxies in space"
+  "Abstract geometric shapes"
+
+Nature:
+  "Autumn leaves falling"
+  "Ocean waves crashing"
+  "Northern lights dancing"
+  "Clouds forming and moving"
+
+================================================================================
+COMPLETE EXAMPLE WORKFLOW
+================================================================================
+
+# 1. Extract motion from public video
+conda activate flow_warp
+python make_warped_noise.py \
+    "https://cdn.pixabay.com/video/2023/08/05/174963-851965097_tiny.mp4" \
+    --output_folder dance_motion
+
+# Output:
+# ✓ Noise shape: (49, 16, 60, 90)
+# ✓ Flow shape: (48, 2, 480, 720)
+# ✓ Output folder: dance_motion
+
+# 2. Generate video with text prompt
+conda activate flow
+python cut_and_drag_inference.py dance_motion \
+    --prompt "A futuristic robot dancing with glowing LED lights" \
+    --output_mp4_path robot_dance.mp4 \
+    --device cuda \
+    --num_inference_steps 30
+
+# Output:
+# ✓ Generated: robot_dance.mp4
+# ✓ Duration: ~4 seconds, 49 frames
+# ✓ Resolution: 480x720
+
+# 3. Generate with image starting point
+python cut_and_drag_inference.py dance_motion \
+    --image_path dance_motion/first_frame.png \
+    --prompt "Transform into a watercolor painting" \
+    --output_mp4_path watercolor.mp4 \
+    --device cuda
+
+# 4. Generate with controlled motion strength
+python cut_and_drag_inference.py dance_motion \
+    --prompt "Abstract flowing shapes" \
+    --degradation 0.3 \
+    --output_mp4_path abstract.mp4 \
+    --device cuda
+
+================================================================================
+ENVIRONMENT SETUP
+================================================================================
+
+TWO CONDA ENVIRONMENTS REQUIRED:
+
+1. flow_warp (for motion extraction)
+   - Contains: rp, CommonSource, RAFT model
+   - Used for: make_warped_noise.py, extract_flow_sequence.py
+   - GPU: ~2-4GB for optical flow
+
+2. flow (for video generation)
+   - Contains: diffusers, CogVideoX models
+   - Used for: cut_and_drag_inference.py
+   - GPU: ~8-16GB for generation
+
+Activate the correct environment for each step!
+
+================================================================================
+PERFORMANCE & REQUIREMENTS
+================================================================================
+
+Hardware Requirements:
+  - GPU: NVIDIA with 16GB+ VRAM (recommended)
+  - GPU: 8GB+ works with smaller models/steps
+  - CPU: Possible but very slow (not recommended)
+  - Storage: ~10GB for models + outputs
+
+Time Estimates (with GPU):
+  - Motion extraction: 1-3 minutes
+  - Video generation: 5-15 minutes
+  - Total pipeline: 6-18 minutes
+
+Memory Usage:
+  - make_warped_noise.py: ~2-4GB GPU
+  - cut_and_drag_inference.py: ~8-16GB GPU
+  - Outputs: ~10-50MB per video
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Issue: "output_folder already exists"
+Fix: Delete folder or use different name
+  rm -rf my_motion
+  python make_warped_noise.py video.mp4 --output_folder my_motion_v2
+
+Issue: CUDA out of memory
+Fix: Reduce inference steps or use smaller model
+  --num_inference_steps 15
+  --model_name "T2V2B"
+
+Issue: "No module named 'rp'"
+Fix: Install in flow_warp environment
+  conda activate flow_warp
+  pip install rp
+
+Issue: Video quality poor
+Fix: Increase steps, adjust degradation
+  --num_inference_steps 50
+  --degradation 0.0
+
+Issue: Motion not transferring well
+Fix: Check degradation, verify flow extraction worked
+  --degradation 0.0  # Full motion
+  ls <folder>/noises.npy  # Verify exists
+
+================================================================================
+VERIFICATION
+================================================================================
+
+Check if pipeline is working:
+
+# 1. Test with existing data
+conda activate flow
+python cut_and_drag_inference.py my_warped_noise \
+    --prompt "Test video" \
+    --output_mp4_path test.mp4 \
+    --device cuda \
+    --num_inference_steps 20
+
+# 2. Verify output exists
+ls -lh test.mp4
+
+# 3. Check video info
+ffmpeg -i test.mp4 2>&1 | grep "Duration\|Stream"
+
+# Expected: ~4 second video, 480x720
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+After basic motion transfer:
+
+1. Advanced Control:
+   - Frequency decomposition (QUICK_START_FREQUENCY.md)
+   - Remove camera shake
+   - Filter motion by frequency
+
+2. Experimentation:
+   - Try different prompts
+   - Test I2V mode with images
+   - Adjust degradation levels
+   - Use different source videos
+
+3. Integration:
+   - Combine with other tools
+   - Batch process multiple videos
+   - Create custom workflows
+
+================================================================================
+FILES & DOCUMENTATION
+================================================================================
+
+Implementation:
+  make_warped_noise.py          Motion extraction
+  cut_and_drag_inference.py     Video generation
+
+Documentation:
+  MOTION_TRANSFER_DEMO.md       Detailed guide
+  TEST_MOTION_TRANSFER.md       Testing guide
+  PIPELINE_SUMMARY.txt          This file
+  demo_motion_transfer.sh       Interactive demo
+
+Frequency Decomposition (Advanced):
+  QUICK_START_FREQUENCY.md      Frequency-based control
+  FREQUENCY_MOTION_IMPLEMENTATION.md
+
+================================================================================
+READY TO START!
+================================================================================
+
+Quickest test (uses your existing data):
+
+conda activate flow
+python cut_and_drag_inference.py my_warped_noise \
+    --prompt "A dancing flame" \
+    --output_mp4_path my_test.mp4 \
+    --device cuda \
+    --num_inference_steps 20
+
+This will take ~3-5 minutes and create my_test.mp4
+
+Then view the result and experiment with different prompts!
+
+================================================================================

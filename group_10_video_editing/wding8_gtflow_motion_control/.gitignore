@@ -1,0 +1,86 @@
+
+code_release/output_folder_new
+code_release/.nfs000000000322527c00009703
+
+#<RP Default Gitignore Start>
+*.pyc
+*.bak
+*.swo
+*.swp
+*.swn
+*.swm
+*.swh
+*.swi
+*.swj
+*.swk
+*.swl
+*.swm
+*.swn
+*.swo
+*.swp
+*.un~
+*.gstmp
+*.ipynb_checkpoints
+*.DS_Store
+#<RP Default Gitignore End>
+
+*.blend*
+
+# LoRA models
+lora_models/
+
+# Data directories (all inputs)
+data/
+!data/README.md
+!data/**/.gitkeep
+
+# Results directories (all outputs)
+results/
+!results/README.md
+!results/**/.gitkeep
+
+# Legacy folders (to be migrated)
+outputs/
+comparison_outputs/
+my_warped_noise/
+brown-bear/
+dynamite_results/
+dynamite_warped_noise/
+fft_filtered/
+*_warped_noise/
+
+# Generated files
+*.mp4
+*.gif
+*.npy
+*.pkl
+*.pt
+*.pth
+*.safetensors
+*.png
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs and temporary files
+*.log
+*.tmp
+.cache/
+
+# Model weights and checkpoints (except documentation)
+checkpoints/
+weights/
+models/*.pt
+models/*.pth
+
+# Experiment and test outputs
+experiments/
+test_outputs/
+debug/
