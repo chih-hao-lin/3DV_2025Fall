@@ -32,3 +32,5 @@
         --device "cuda" \
         --num_inference_steps 30
     ```
+## Example output
+![Demo](media/demo.gif)
