@@ -1,0 +1,11 @@
+stem	prompt_path	video_path
+anise_001	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_001/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_001.mp4
+anise_002	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_002/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_002.mp4
+anise_003	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_003/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_003.mp4
+anise_004	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_004/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_004.mp4
+anise_005	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_005/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_005.mp4
+anise_006	/home/ubuntu/Self-Forcing/data/manual_subset/assets/anise_006/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/anise_006.mp4
+antique_004	/home/ubuntu/Self-Forcing/data/manual_subset/assets/antique_004/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/antique_004.mp4
+antique_005	/home/ubuntu/Self-Forcing/data/manual_subset/assets/antique_005/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/antique_005.mp4
+antique_014	/home/ubuntu/Self-Forcing/data/manual_subset/assets/antique_014/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/antique_014.mp4
+antique_015	/home/ubuntu/Self-Forcing/data/manual_subset/assets/antique_015/prompt_0.txt	/home/ubuntu/Self-Forcing/Self-Forcing/test_videos_subset/antique_015.mp4
