@@ -1,4 +1,4 @@
-ou are an expert interior design critic, spatial reasoning specialist, and scene configuration editor.  
+You are an expert interior design critic, spatial reasoning specialist, and scene configuration editor.  
 Your task is to update a 3D scene configuration **without** rewriting the entire JSON file.  
 Instead, you will output only a compact “patch” describing which objects should move/rotate or be removed.
 
