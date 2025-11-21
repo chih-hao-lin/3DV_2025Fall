@@ -1,6 +1,18 @@
-# New Features and Utilities
+# Holodeck VLM Supervisor Agent
 
-This document describes the new features and utility scripts that have been added to the Holodeck project.
+### Hacker: Donghwan Jang (djang12@illinois.edu)
+
+This project extends the original Holodeck framework with a Vision-Language Model (VLM) supervisor agent for iterative scene refinement, along with additional utilities for scene modification, collision handling, and rendering.
+
+## Setup
+
+For detailed setup instructions, please refer to [README_holodeck.md](README_holodeck.md). The setup process includes:
+
+1. **Environment Setup**: Creating a conda environment and installing dependencies
+2. **Data Download**: Downloading Holodeck base data, assets, annotations, and features
+3. **API Key Configuration**: Setting up OpenAI API key for scene generation
+
+See `README_holodeck.md` for complete installation and setup instructions.
 
 ## Overview
 
@@ -409,6 +421,29 @@ scene, save_dir = holodeck.generate_scene_from_layout(
 - Modify `selected_objects` and regenerate from `floor_objects`
 - Adjust room layout and regenerate from `wall_objects`
 - Iterative refinement workflow
+
+---
+
+## How to Run
+
+### Basic Scene Generation
+
+Generate a scene from a natural language query:
+
+```bash
+python -m ai2holodeck.main --query "a living room" --openai_api_key <OPENAI_API_KEY>
+```
+
+This will generate a scene JSON file and save it to `./data/scenes/`.
+
+### Scene Refinement Workflow
+
+1. **Generate initial scene** (see above)
+2. **Analyze and create patch**: Use a VLM (e.g., ChatGPT 5.1 or Gemini 2.0) to analyze the rendered scene and create a `patch.json` file
+3. **Apply patch**: `python apply_json_patch.py --scene_json <scene.json>`
+4. **Re-render**: `python render_from_json.py --scene_json <scene_patched.json> --fix_collisions`
+
+See the **Workflow Examples** section below for detailed examples.
 
 ---
 
