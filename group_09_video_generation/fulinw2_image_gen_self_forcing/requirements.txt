@@ -1,0 +1,26 @@
+# requirements.txt for V-SD Demo (Stable Diffusion LoRA Tuning)
+# Assumes PyTorch with CUDA support is already installed in the environment.
+
+# Core Hugging Face libraries
+diffusers~=0.27.2
+transformers~=4.38.2
+accelerate~=0.29.3
+peft~=0.10.0 # For LoRA
+huggingface-hub~=0.22.2 # Dependency for downloading models
+
+# Image handling and Perceptual Loss
+torchvision # Version should ideally match your PyTorch installation
+Pillow~=10.2.0
+scipy~=1.13.0 # Often needed for image operations or dependencies
+ftfy~=6.2.0 # Text fixing library, sometimes needed by CLIP/transformers
+
+# Utilities
+numpy~=1.26.4 # Usually installed with PyTorch, but good to list
+matplotlib~=3.8.3 # For saving the final plot
+safetensors~=0.4.2 # For loading/saving model weights securely
+imageio~=2.34.0 # For saving GIFs (though V-SD saves PNGs, good to have)
+imageio[ffmpeg] # Optional: provides ffmpeg backend for imageio
+tqdm # Progress bars
+
+# Note: torch is intentionally excluded as it's pre-installed.
+# Ensure your pre-installed torch version is compatible (>=2.0 recommended).
