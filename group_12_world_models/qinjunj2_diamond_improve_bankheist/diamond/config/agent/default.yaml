@@ -1,0 +1,44 @@
+_target_: agent.AgentConfig
+
+denoiser:
+  _target_: models.diffusion.DenoiserConfig
+  sigma_data: 0.5
+  sigma_offset_noise: 0.3
+  use_latent_history: false  # Set to false by default (enable in override if needed)
+  history_encoder:
+    _target_: models.diffusion.HistoryEncoderConfig
+    img_channels: 3
+    latent_dim: 128
+    num_steps_conditioning: 8
+    channels: [32, 32, 32]
+    down: [1, 1, 1]
+    gru_num_layers: 1
+  inner_model:
+    _target_: models.diffusion.InnerModelConfig
+    img_channels: 3
+    num_steps_conditioning: 8
+    cond_channels: 256
+    depths: [2,2,2,2]
+    channels: [64,64,64,64]
+    attn_depths: [0,0,0,0]
+    use_latent_history: false  # Set to false by default
+    latent_dim: 128
+
+rew_end_model:
+  _target_: models.rew_end_model.RewEndModelConfig
+  lstm_dim: 512
+  img_channels: ${agent.denoiser.inner_model.img_channels}
+  img_size: ${env.train.size}
+  cond_channels: 128
+  depths: [2,2,2,2]
+  channels: [32,32,32,32]
+  attn_depths: [0,0,0,0]
+
+actor_critic:
+  _target_: models.actor_critic.ActorCriticConfig
+  lstm_dim: 512
+  img_channels: ${agent.denoiser.inner_model.img_channels}
+  img_size: ${env.train.size}
+  channels: [32,32,64,64]
+  down: [1,1,1,1]
+

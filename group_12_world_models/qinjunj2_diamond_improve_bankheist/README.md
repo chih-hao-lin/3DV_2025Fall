@@ -7,9 +7,9 @@ Same as [Diamond](https://github.com/eloialonso/diamond).
 
 ## What Did I Do?
 
-- Fine-tuned the model for an additional 20k steps on BankHeist, but observed no performance improvement. The trained model can be found in `diamond/outputs/`.
+- Fine-tuned the model for an additional 20k steps on BankHeist, but observed no performance improvement.
 
-- Investigated action patterns and reward traces in BankHeist and identified the issue with purely random actions changing every step. The traces can be found in `diamond/dataset/rec_test*.txt/`. 
+- Investigated action patterns and reward traces in BankHeist and identified the issue with purely random actions changing every step. The traces can be found in `diamond/dataset/rec_test*.txt/`.
 
 - Added support for action repetition (no-ops) between action changes
 
